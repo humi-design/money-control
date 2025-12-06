@@ -8,12 +8,23 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
 # -----------------------------
+# STREAMLIT APP
+# -----------------------------
+st.set_page_config(page_title="MoneyControl Forum Scraper", layout="wide")
+st.title("💹 MoneyControl Forum Scraper (Cloud Ready)")
+st.markdown("""
+Paste the MoneyControl forum URL for any company (e.g., IRCTC, Tata).  
+The app will scrape all posts from all pages and allow you to download a CSV.
+""")
+
+url_input = st.text_input("Enter MoneyControl Forum URL:")
+
+# -----------------------------
 # HELPER FUNCTIONS
 # -----------------------------
-
 def get_driver():
     options = Options()
-    options.add_argument("--headless=new")  # run in background
+    options.add_argument("--headless=new")  # must for cloud
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -26,10 +37,8 @@ def get_driver():
 def scrape_page(driver, url):
     driver.get(url)
     time.sleep(2)
-
     posts = driver.find_elements(By.CSS_SELECTOR, ".FL.pr.bseForumData")
     data = []
-
     for post in posts:
         try:
             user = post.find_element(By.CSS_SELECTOR, ".gry").text.strip()
@@ -37,8 +46,7 @@ def scrape_page(driver, url):
             msg = post.find_element(By.CSS_SELECTOR, ".FL.wid652").text.strip()
             data.append([user, time_posted, msg])
         except:
-            pass
-
+            continue
     return data
 
 def get_total_pages(driver, base_url):
@@ -50,46 +58,39 @@ def get_total_pages(driver, base_url):
         try:
             nums.append(int(p.text))
         except:
-            pass
+            continue
     return max(nums) if nums else 1
 
 def full_scrape(base_url):
     driver = get_driver()
     total_pages = get_total_pages(driver, base_url)
     all_data = []
-
     for i in range(1, total_pages + 1):
         st.info(f"Scraping page {i} of {total_pages}...")
         page_url = base_url.replace(".html", f"/{i}.html")
         all_data.extend(scrape_page(driver, page_url))
-
     driver.quit()
     df = pd.DataFrame(all_data, columns=["User", "Time", "Message"])
     df.drop_duplicates(inplace=True)
     return df
 
 # -----------------------------
-# STREAMLIT APP
+# SCRAPE BUTTON
 # -----------------------------
-
-st.title("MoneyControl Forum Scraper")
-st.markdown("Paste the forum URL of any company (e.g., IRCTC, Tata) to scrape posts.")
-
-url_input = st.text_input("Enter MoneyControl Forum URL:")
-
 if st.button("Scrape Forum"):
-    if url_input.strip() == "":
+    if not url_input.strip():
         st.warning("Please enter a valid URL!")
     else:
-        with st.spinner("Scraping forum… This may take a few minutes depending on pages…"):
+        with st.spinner("Scraping forum… this may take a few minutes…"):
             df = full_scrape(url_input.strip())
         st.success(f"Scraping completed! Total posts: {len(df)}")
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
 
+        # CSV download
         csv_file = "forum_data.csv"
         df.to_csv(csv_file, index=False)
         st.download_button(
-            label="Download CSV",
+            label="📥 Download CSV",
             data=open(csv_file, "rb").read(),
             file_name="forum_data.csv",
             mime="text/csv"
